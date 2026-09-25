@@ -230,7 +230,8 @@ function copyOrder(data, id, payload) {
     reason: String((payload && payload.reason) || source.reason),
     issuer: String((payload && payload.issuer) || source.issuer),
     remark: String((payload && payload.remark) || source.remark),
-    attachments: source.attachments,
+    // 附件清单要复制成各自独立的一份（逐项拷贝），之后两边增删互不影响
+    attachments: (source.attachments || []).map((a) => ({ name: a.name, note: a.note, at: a.at })),
   };
   data.orders.push(order);
   return decorateOrder(data, order);
