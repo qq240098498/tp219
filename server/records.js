@@ -64,6 +64,60 @@ function removeLevel(data, id) {
   return { removed: id };
 }
 
+// 缺测对照清单：按水库把"应该有记录的日期"与"实际有记录的日期"对照出来。
+// 对照范围从该库首条记录起到当天止（筛选的起止日期只会把范围收窄）；
+// 缺了哪天、每天缺几个时刻都逐日列在 days 里。
+function missingLevels(data, query) {
+  const q = query || {};
+  const today = store.todayIso();
+  const blocks = [];
+  const reservoirs = data.reservoirs.filter((r) => !q.reservoirId || r.id === q.reservoirId);
+  for (const reservoir of reservoirs) {
+    const own = data.levels.filter((l) => l.reservoirId === reservoir.id);
+    const dates = own.map((l) => l.date).sort();
+    const firstRecordDate = dates[0] || '';
+    const lastRecordDate = dates[dates.length - 1] || '';
+    let from = firstRecordDate;
+    if (q.from && (!from || String(q.from) > from)) from = String(q.from);
+    let to = today;
+    if (q.to && String(q.to) < to) to = String(q.to);
+    const block = {
+      reservoirId: reservoir.id,
+      reservoirName: reservoir.name,
+      firstRecordDate,
+      lastRecordDate,
+      from,
+      to,
+      expectedTimes: [],
+      expectedDays: 0,
+      actualDays: 0,
+      fullMissingDays: 0,
+      partialMissingDays: 0,
+      missingTimeCount: 0,
+      days: [],
+    };
+    if (from && to && from <= to) {
+      const result = water.missingDays(data, reservoir, from, to);
+      const actualDates = new Set(own.filter((l) => l.date >= from && l.date <= to).map((l) => l.date));
+      block.expectedTimes = result.expectedTimes;
+      block.expectedDays = store.daysBetween(from, to) + 1;
+      block.actualDays = actualDates.size;
+      block.days = result.days;
+      block.fullMissingDays = result.days.filter((d) => d.full).length;
+      block.partialMissingDays = result.days.length - block.fullMissingDays;
+      block.missingTimeCount = result.days.reduce((s, d) => s + d.missingCount, 0);
+    }
+    blocks.push(block);
+  }
+  return {
+    generatedOn: today,
+    totalFullMissingDays: blocks.reduce((s, b) => s + b.fullMissingDays, 0),
+    totalPartialMissingDays: blocks.reduce((s, b) => s + b.partialMissingDays, 0),
+    totalMissingTimeCount: blocks.reduce((s, b) => s + b.missingTimeCount, 0),
+    reservoirs: blocks,
+  };
+}
+
 // 入库与出库流量记录
 function listFlows(data, kind, query) {
   const q = query || {};
@@ -215,7 +269,7 @@ function updateOrder(data, id, payload) {
   return decorateOrder(data, order);
 }
 
-// 复制一条指令（含附件与说明）
+// 复制一条指令（含附件与说明）：附件清单逐条另拷一份，副本与原指令各自独立，互不影响
 function copyOrder(data, id, payload) {
   const source = findOrder(data, id);
   const order = {
@@ -230,7 +284,7 @@ function copyOrder(data, id, payload) {
     reason: String((payload && payload.reason) || source.reason),
     issuer: String((payload && payload.issuer) || source.issuer),
     remark: String((payload && payload.remark) || source.remark),
-    attachments: source.attachments,
+    attachments: (source.attachments || []).map((a) => Object.assign({}, a)),
   };
   data.orders.push(order);
   return decorateOrder(data, order);
@@ -256,6 +310,7 @@ module.exports = {
   listLevels,
   saveLevel,
   removeLevel,
+  missingLevels,
   listFlows,
   saveFlow,
   removeFlow,

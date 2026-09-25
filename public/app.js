@@ -125,6 +125,7 @@
     summary: null,
     reservoirs: [],
     levels: [],
+    levelMissing: null,
     flows: { inflow: [], release: [] },
     orders: [],
     balance: null,
@@ -295,9 +296,11 @@
 
   /* 水位与流量侧栏的条数只局部刷新，不整条重建侧栏（否则会把正在输入的控件换掉） */
   function waterCountsHtml() {
+    var miss = state.levelMissing;
     return '<li>水位记录 ' + ((state.levels || []).length) + ' 条</li>'
       + '<li>入库流量 ' + ((state.flows.inflow || []).length) + ' 条</li>'
       + '<li>出库流量 ' + ((state.flows.release || []).length) + ' 条</li>'
+      + (miss ? '<li>缺测 ' + miss.totalFullMissingDays + ' 天 / 缺 ' + miss.totalMissingTimeCount + ' 个时刻</li>' : '')
       + '<li>当天入库、是否超限取接口</li>';
   }
 
@@ -615,16 +618,76 @@
   async function loadWaterRecords() {
     var f = state.filters.water;
     state.levels = await api('GET', '/api/levels' + queryString({ reservoirId: f.reservoirId, from: f.from, to: f.to }));
+    state.levelMissing = await api('GET', '/api/levels/missing' + queryString({ reservoirId: f.reservoirId, from: f.from, to: f.to }));
     state.flows.inflow = await api('GET', '/api/flows' + queryString({ kind: 'inflow', reservoirId: f.reservoirId, from: f.from, to: f.to }));
     state.flows.release = await api('GET', '/api/flows' + queryString({ kind: 'release', reservoirId: f.reservoirId, from: f.from, to: f.to }));
   }
 
   function renderWater() {
-    /* 水位记录表 */
+    /* 缺测对照汇总（接口 GET /api/levels/missing 的原值） */
+    var miss = state.levelMissing;
+    var missBox = el('missingSummary');
+    if (missBox) {
+      if (!miss) {
+        missBox.innerHTML = '<p class="empty">数据还在加载…</p>';
+      } else if (!miss.reservoirs || !miss.reservoirs.length) {
+        missBox.innerHTML = '<p class="empty">没有可对照的水库。</p>';
+      } else {
+        var missLines = miss.reservoirs.map(function (b) {
+          if (!b.expectedDays) {
+            return '<p class="missing-line"><b>' + esc(b.reservoirName) + '</b>：还没有水位记录，定不出应该有记录的日期，没法对照。</p>';
+          }
+          var text = '对照 ' + esc(b.from) + ' 至 ' + esc(b.to) + '（应有时刻 ' + esc(b.expectedTimes.join('、')) + '）：应有 '
+            + esc(b.expectedDays) + ' 天，实有 ' + esc(b.actualDays) + ' 天';
+          if ((b.days || []).length) {
+            text += '，<span class="missing-strong">整日缺测 ' + esc(b.fullMissingDays) + ' 天、部分缺测 ' + esc(b.partialMissingDays)
+              + ' 天，共缺 ' + esc(b.missingTimeCount) + ' 个时刻</span>';
+          } else {
+            text += '，<span class="missing-ok">不缺测</span>';
+          }
+          return '<p class="missing-line"><b>' + esc(b.reservoirName) + '</b>：' + text + '。</p>';
+        });
+        missBox.innerHTML = missLines.join('')
+          + '<p class="side-note">缺测日期已并入下表、用「缺测」标记单独标出。对照范围从各库首条记录起到当天止，筛选起止日期只会把范围收窄；每天该有的时刻取该库记录里出现过的时刻。</p>';
+      }
+    }
+
+    /* 水位记录表：实有记录与缺测日期合并，按日期倒序（同日先实有记录、后缺测标记） */
     var levelColspan = columnCount('levelRows');
     var levels = state.levels || [];
+    var combined = [];
+    levels.forEach(function (l) { combined.push({ kind: 'record', date: l.date, record: l }); });
+    if (miss && miss.reservoirs) {
+      miss.reservoirs.forEach(function (b) {
+        (b.days || []).forEach(function (d) {
+          combined.push({ kind: 'missing', date: d.date, reservoirName: b.reservoirName, day: d });
+        });
+      });
+    }
+    combined.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return a.kind === b.kind ? 0 : (a.kind === 'record' ? -1 : 1);
+    });
     var levelHtml = [];
-    levels.forEach(function (l) {
+    combined.forEach(function (entry) {
+      if (entry.kind === 'missing') {
+        var d = entry.day;
+        levelHtml.push('<tr class="level-row is-missing">'
+          + '<td>' + esc(dash(d.date)) + '</td>'
+          + '<td>' + esc(d.missingTimes.join('、')) + '</td>'
+          + '<td>' + esc(dash(entry.reservoirName)) + '</td>'
+          + '<td class="num">—</td>'
+          + '<td class="num">—</td>'
+          + '<td class="num">—</td>'
+          + '<td>' + esc(yesNo(d.floodSeason)) + '</td>'
+          + '<td>—</td>'
+          + '<td class="num">—</td>'
+          + '<td><span class="tag is-missing">' + esc(d.kind) + '</span></td>'
+          + '<td><span class="missing-note">缺 ' + esc(d.missingCount) + ' 个时刻</span></td>'
+          + '</tr>');
+        return;
+      }
+      var l = entry.record;
       var expanded = state.expanded.level === l.id;
       levelHtml.push('<tr class="level-row' + (expanded ? ' is-expanded' : '') + '" data-action="toggle-level" data-id="' + esc(l.id) + '">'
         + '<td>' + esc(dash(l.date)) + '</td>'
@@ -660,7 +723,7 @@
           + '</div></div></td></tr>');
       }
     });
-    el('levelRows').innerHTML = levelHtml.length ? levelHtml.join('') : emptyRow(levelColspan, levels.length ? '没有符合筛选的水位记录。' : '数据还在加载…');
+    el('levelRows').innerHTML = levelHtml.length ? levelHtml.join('') : emptyRow(levelColspan, miss ? '没有符合筛选的水位记录。' : '数据还在加载…');
 
     /* 入库 / 出库流量表 */
     renderFlowTable('inflow');
@@ -804,6 +867,7 @@
       + itemHtml(['起始日期', b.fromDate])
       + itemHtml(['结束日期', b.toDate])
       + itemHtml(['天数', b.days])
+      + itemHtml(['时段内水位缺测', (b.levelMissingDays === 0 ? '不缺测' : b.levelMissingDays + ' 天')])
       + '</div>'
       + '<div class="result-grid">'
       + resultItem('入库水量（万m³）', b.inflowVolume)
@@ -824,6 +888,9 @@
       + '<li>损失：天数 <b>' + esc(numText(b.days)) + '</b> × 每天损失 <b>' + esc(dash(settings.lossPerDayWan)) + '</b>，接口返回 <b>' + esc(numText(b.lossVolume)) + '</b> 万m³。</li>'
       + '<li>蓄变：末库容 <b>' + esc(numText(b.endCapacity)) + '</b> − 首库容 <b>' + esc(numText(b.startCapacity)) + '</b>，接口返回 <b>' + esc(numText(b.deltaStorage)) + '</b> 万m³（首水位 ' + esc(numText(b.startLevel)) + ' m、末水位 ' + esc(numText(b.endLevel)) + ' m 由接口按曲线求库容）。</li>'
       + '<li>残差：接口返回 <b>' + esc(numText(b.residual)) + '</b> 万m³；容差取设置里 <b>' + esc(numText(b.tolerance)) + '</b> 万m³；是否平衡以接口返回的 <code>balanced</code> 为准：<b>' + esc(b.balanced === true ? '平衡' : '不平衡') + '</b>。</li>'
+      + (b.levelMissingDays
+        ? '<li>缺测：本时段有 <b>' + esc(b.levelMissingDays) + '</b> 天没有水位记录（' + esc((b.levelMissingDates || []).join('、')) + '），蓄变只能按时段内实有的首末两条水位记录算；缺测日期已在「水位与流量」清单里单独标出。</li>'
+        : '<li>缺测：本时段水位记录逐日齐全，没有缺测。</li>')
       + '</ul>';
   }
 
@@ -870,7 +937,7 @@
       closeModal();
       toast('设置已保存');
       state.summary = await api('GET', '/api/summary');
-      state.levels = await api('GET', '/api/levels' + queryString({ reservoirId: state.filters.water.reservoirId, from: state.filters.water.from, to: state.filters.water.to }));
+      await loadWaterRecords();
       renderTopbar();
       renderSidebar();
       renderOverview();

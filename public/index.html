@@ -115,7 +115,7 @@
       <div class="view-head">
         <div>
           <h2>水位与流量</h2>
-          <p class="view-sub">限水位、超出、是否汛期、是否超限、当天入库、预警等级、对应水量都直接显示 <code>GET /api/levels</code> 与 <code>GET /api/flows</code> 返回的字段。点一行在行内展开并删除。</p>
+          <p class="view-sub">限水位、超出、是否汛期、是否超限、当天入库、预警等级、对应水量都直接显示 <code>GET /api/levels</code> 与 <code>GET /api/flows</code> 返回的字段。点一行在行内展开并删除。缺测日期按 <code>GET /api/levels/missing</code> 的对照结果并入清单、以「缺测」标记单独标出。</p>
         </div>
         <div class="view-actions">
           <div class="subtabs" id="waterSubtabs">
@@ -171,6 +171,11 @@
             </div>
           </form>
           <div class="form-error" id="levelFormError" hidden></div>
+        </div>
+
+        <div class="card">
+          <h3>缺测对照 <span class="card-sub">接口 <code>GET /api/levels/missing</code>，按水库与日期对照应有记录与实有记录</span></h3>
+          <div id="missingSummary"><p class="empty">数据还在加载…</p></div>
         </div>
 
         <div class="table-wrap">

@@ -76,4 +76,19 @@ function daysBetween(from, to) {
   return Math.round((end - start) / 86400000);
 }
 
-module.exports = { load, save, nextId, normalize, todayIso, round, daysBetween, DEFAULT_SETTINGS, dataFile };
+// 起止日期之间的每一天（含两端），返回 年-月-日 的数组
+function datesBetween(from, to) {
+  const a = String(from || '').split('-').map(Number);
+  const b = String(to || '').split('-').map(Number);
+  if (a.length !== 3 || b.length !== 3) return [];
+  const out = [];
+  let t = Date.UTC(a[0], a[1] - 1, a[2]);
+  const end = Date.UTC(b[0], b[1] - 1, b[2]);
+  while (t <= end) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+    t += 86400000;
+  }
+  return out;
+}
+
+module.exports = { load, save, nextId, normalize, todayIso, round, daysBetween, datesBetween, DEFAULT_SETTINGS, dataFile };

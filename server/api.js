@@ -45,6 +45,7 @@ router.delete('/reservoirs/:id', withData((data, req) => ({ __save: true, __body
 router.put('/reservoirs/:id/curve', withData((data, req) => ({ __save: true, __body: reservoirs.saveCurve(data, req.params.id, req.body || {}) })));
 
 router.get('/levels', withData((data, req) => records.listLevels(data, req.query)));
+router.get('/levels/missing', withData((data, req) => records.missingLevels(data, req.query)));
 router.post('/levels', withData((data, req) => ({ __save: true, __body: records.saveLevel(data, req.body || {}) })));
 router.delete('/levels/:id', withData((data, req) => ({ __save: true, __body: records.removeLevel(data, req.params.id) })));
 

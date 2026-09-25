@@ -1818,6 +1818,61 @@
           "at": "2026-05-05"
         }
       ]
+    },
+    {
+      "id": "ord-0005",
+      "code": "ZL-0005",
+      "reservoirId": "res-0001",
+      "issuedAt": "2026-09-25",
+      "targetFlow": 60,
+      "windowStart": "2026-05-06",
+      "windowEnd": "2026-05-10",
+      "status": "已下达",
+      "reason": "满足下游灌溉用水",
+      "issuer": "调度科",
+      "remark": "",
+      "attachments": [
+        {
+          "name": "灌溉用水申请",
+          "note": "镇水利站报送",
+          "at": "2026-05-06"
+        },
+        {
+          "name": "12",
+          "note": "21",
+          "at": "2026-09-25"
+        }
+      ]
+    },
+    {
+      "id": "ord-0006",
+      "code": "ZL-0006",
+      "reservoirId": "res-0001",
+      "issuedAt": "2026-09-25",
+      "targetFlow": 60,
+      "windowStart": "2026-05-06",
+      "windowEnd": "2026-05-10",
+      "status": "已下达",
+      "reason": "满足下游灌溉用水",
+      "issuer": "调度科",
+      "remark": "",
+      "attachments": [
+        {
+          "name": "灌溉用水申请",
+          "note": "镇水利站报送",
+          "at": "2026-05-06"
+        },
+        {
+          "name": "12",
+          "note": "21",
+          "at": "2026-09-25"
+        },
+        {
+          "name": "2121",
+          "note": "2121",
+          "at": "2026-09-25"
+        }
+      ]
     }
   ]
 }

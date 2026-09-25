@@ -78,6 +78,40 @@ function warningOf(reservoir, level, inflowFlow, settings) {
   return { level: grade, byLevel: grade, inflowFlow: flow };
 }
 
+// 缺测对照：某库在 [fromDate, toDate] 里，每天该有的时刻与实际记录逐日对照。
+// 每天该有的时刻取该库记录里出现过的时刻（还没有记录的库按 08:00）；
+// 一天里该有的时刻一个都没记是「整日缺测」，记了一部分是「部分缺测」。
+function missingDays(data, reservoir, fromDate, toDate) {
+  const own = data.levels.filter((l) => l.reservoirId === reservoir.id);
+  const expectedTimes = Array.from(new Set(own.map((l) => String(l.time || '08:00')))).sort();
+  if (!expectedTimes.length) expectedTimes.push('08:00');
+  const actualByDate = {};
+  for (const l of own) {
+    if (!actualByDate[l.date]) actualByDate[l.date] = new Set();
+    actualByDate[l.date].add(String(l.time || '08:00'));
+  }
+  const days = [];
+  for (const date of store.datesBetween(fromDate, toDate)) {
+    const actualSet = actualByDate[date] || new Set();
+    const actualTimes = Array.from(actualSet).sort();
+    const missingTimes = expectedTimes.filter((t) => !actualSet.has(t));
+    if (!missingTimes.length) continue;
+    const full = actualTimes.length === 0;
+    days.push({
+      date,
+      expectedTimes,
+      actualTimes,
+      missingTimes,
+      missingCount: missingTimes.length,
+      expectedCount: expectedTimes.length,
+      full,
+      kind: full ? '整日缺测' : '部分缺测',
+      floodSeason: inFloodSeason(date, data.settings),
+    });
+  }
+  return { expectedTimes, days };
+}
+
 // 时段水量平衡：入库水量 - 出库水量 - 损失 = 蓄变
 function balance(data, reservoirId, fromDate, toDate) {
   const settings = data.settings;
@@ -105,6 +139,11 @@ function balance(data, reservoirId, fromDate, toDate) {
   const deltaStorage = store.round(endCapacity - startCapacity, 3);
   const residual = store.round(inflowVolume - releaseVolume - lossVolume - deltaStorage, 3);
   const balanced = Math.abs(residual) < Number(settings.balanceToleranceWan);
+  // 时段内的水位缺测日期（对照到当天为止，未来的日子不算缺测）
+  const today = store.todayIso();
+  const missTo = toDate < today ? toDate : today;
+  const miss = fromDate <= missTo ? missingDays(data, reservoir, fromDate, missTo) : { days: [] };
+  const levelMissingDates = miss.days.filter((d) => d.full).map((d) => d.date);
   return {
     reservoirId,
     reservoirName: reservoir.name,
@@ -124,6 +163,8 @@ function balance(data, reservoirId, fromDate, toDate) {
     residual,
     tolerance: Number(settings.balanceToleranceWan),
     balanced,
+    levelMissingDays: levelMissingDates.length,
+    levelMissingDates,
   };
 }
 
@@ -137,5 +178,6 @@ module.exports = {
   limitLevelOf,
   levelCheck,
   warningOf,
+  missingDays,
   balance,
 };
